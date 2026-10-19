@@ -1,0 +1,253 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  CASHIER
+  INVENTORY_OFFICER
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  POS_CARD
+  SPLIT
+}
+
+enum SaleStatus {
+  COMPLETED
+  VOIDED
+  REFUNDED
+}
+
+enum MovementType {
+  SALE
+  INITIAL_STOCK
+  PURCHASE_RECEIPT
+  DAMAGE_EXPIRED
+  MANUAL_ADJUSTMENT
+  RETURN_REFUND
+}
+
+enum ImportStatus {
+  PENDING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model User {
+  id             String          @id @default(uuid())
+  email          String          @unique
+  name           String
+  passwordHash   String
+  role           Role            @default(CASHIER)
+  isActive       Boolean         @default(true)
+  sales          Sale[]
+  stockMovements StockMovement[]
+  stockReceipts  StockReceipt[]
+  auditLogs      AuditLog[]
+  importJobs     ImportJob[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("users")
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("categories")
+}
+
+model Supplier {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  notes         String?
+  products      Product[]
+  stockReceipts StockReceipt[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("suppliers")
+}
+
+model Product {
+  id                String          @id @default(uuid())
+  name              String
+  sku               String          @unique
+  barcode           String?         @unique
+  description       String?
+  categoryId        String?
+  category          Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  unitOfMeasurement String          @default("pcs")
+  costPrice         Decimal         @db.Decimal(12, 2)
+  sellingPrice      Decimal         @db.Decimal(12, 2)
+  stockQuantity     Decimal         @default(0) @db.Decimal(12, 2)
+  minStockThreshold Decimal         @default(5) @db.Decimal(12, 2)
+  supplierId        String?
+  supplier          Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  imageUrl          String?
+  isActive          Boolean         @default(true)
+  saleItems         SaleItem[]
+  stockMovements    StockMovement[]
+  receiptItems      StockReceiptItem[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([name])
+  @@index([sku])
+  @@index([barcode])
+  @@map("products")
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  receiptNumber String        @unique
+  cashierId     String
+  cashier       User          @relation(fields: [cashierId], references: [id])
+  subtotal      Decimal       @db.Decimal(12, 2)
+  discountTotal Decimal       @default(0) @db.Decimal(12, 2)
+  taxTotal      Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  paymentMethod PaymentMethod
+  status        SaleStatus    @default(COMPLETED)
+  idempotencyKey String?      @unique
+  notes         String?
+  items         SaleItem[]
+  payments      Payment[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([receiptNumber])
+  @@index([createdAt])
+  @@index([cashierId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id           String   @id @default(uuid())
+  saleId       String
+  sale         Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  productName  String
+  sku          String
+  quantity     Decimal  @db.Decimal(12, 2)
+  unitCost     Decimal  @db.Decimal(12, 2)
+  unitPrice    Decimal  @db.Decimal(12, 2)
+  discount     Decimal  @default(0) @db.Decimal(12, 2)
+  totalPrice   Decimal  @db.Decimal(12, 2)
+  createdAt    DateTime @default(now())
+
+  @@map("sale_items")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  saleId        String
+  sale          Sale          @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  paymentMethod PaymentMethod
+  amount        Decimal       @db.Decimal(12, 2)
+  reference     String?
+  createdAt     DateTime      @default(now())
+
+  @@map("payments")
+}
+
+model StockMovement {
+  id           String       @id @default(uuid())
+  productId    String
+  product      Product      @relation(fields: [productId], references: [id])
+  quantity     Decimal      @db.Decimal(12, 2)
+  previousQty  Decimal      @db.Decimal(12, 2)
+  newQty       Decimal      @db.Decimal(12, 2)
+  movementType MovementType
+  reference    String?
+  reason       String?
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+model StockReceipt {
+  id            String             @id @default(uuid())
+  receiptNumber String             @unique
+  supplierId    String?
+  supplier      Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  userId        String
+  user          User               @relation(fields: [userId], references: [id])
+  totalCost     Decimal            @db.Decimal(12, 2)
+  notes         String?
+  items         StockReceiptItem[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@map("stock_receipts")
+}
+
+model StockReceiptItem {
+  id             String       @id @default(uuid())
+  stockReceiptId String
+  stockReceipt   StockReceipt @relation(fields: [stockReceiptId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product      @relation(fields: [productId], references: [id])
+  quantity       Decimal      @db.Decimal(12, 2)
+  unitCost       Decimal      @db.Decimal(12, 2)
+  totalCost      Decimal      @db.Decimal(12, 2)
+  createdAt      DateTime     @default(now())
+
+  @@map("stock_receipt_items")
+}
+
+model ImportJob {
+  id           String       @id @default(uuid())
+  fileName     String
+  totalRows    Int
+  importedRows Int
+  failedRows   Int
+  status       ImportStatus @default(PENDING)
+  errorsJson   String?      @db.Text
+  userId       String
+  user         User         @relation(fields: [userId], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@map("import_jobs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  resource   String
+  resourceId String?
+  details    String?  @db.Text
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
