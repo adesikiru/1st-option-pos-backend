@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Type } from 'class-validator';
 import { MovementType } from '@prisma/client';
 
 export class StockAdjustmentDto {
@@ -9,12 +9,23 @@ export class StockAdjustmentDto {
   @IsNumber()
   quantity: number; // positive to add, negative to deduct
 
+  // Frontend sends 'type', backend historically used 'movementType' - accept both
   @IsEnum(MovementType)
-  movementType: MovementType; // e.g. DAMAGE_EXPIRED, MANUAL_ADJUSTMENT
+  @IsOptional()
+  movementType?: MovementType;
+
+  @IsEnum(MovementType)
+  @IsOptional()
+  type?: MovementType;
 
   @IsString()
   @IsOptional()
   reason?: string;
+
+  // Computed from either movementType or type
+  get resolvedMovementType(): MovementType {
+    return this.movementType ?? this.type ?? MovementType.MANUAL_ADJUSTMENT;
+  }
 }
 
 export class StockMovementsQueryDto {
@@ -27,8 +38,17 @@ export class StockMovementsQueryDto {
   movementType?: MovementType;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   limit?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   offset?: number;
 }

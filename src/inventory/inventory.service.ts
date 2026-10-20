@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { MovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockAdjustmentDto, StockMovementsQueryDto } from './dto/inventory.dto';
 
@@ -12,6 +12,10 @@ export class InventoryService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
+
+    // Accept either 'type' (frontend) or 'movementType' (legacy)
+    const resolvedType: MovementType =
+      (dto.movementType ?? dto.type ?? MovementType.MANUAL_ADJUSTMENT) as MovementType;
 
     const currentQty = new Prisma.Decimal(product.stockQuantity);
     const adjustmentQty = new Prisma.Decimal(dto.quantity);
@@ -33,7 +37,7 @@ export class InventoryService {
           quantity: adjustmentQty,
           previousQty: currentQty,
           newQty,
-          movementType: dto.movementType,
+          movementType: resolvedType,
           reason: dto.reason,
           userId,
         },
@@ -44,11 +48,8 @@ export class InventoryService {
   }
 
   async getLowStockAlerts() {
-    // Find products where stockQuantity <= minStockThreshold
     const products = await this.prisma.product.findMany({
-      where: {
-        isActive: true,
-      },
+      where: { isActive: true },
       include: {
         category: true,
         supplier: true,
@@ -62,18 +63,20 @@ export class InventoryService {
   }
 
   async getMovements(query: StockMovementsQueryDto) {
-    const take = Number(query.limit) || 50;
-    const skip = Number(query.offset) || 0;
+    const limit = Number(query.limit) || 20;
+    const page = Number(query.page) || 1;
+    // Support legacy offset too
+    const skip = query.offset !== undefined ? Number(query.offset) : (page - 1) * limit;
     const where: any = {};
 
     if (query.productId) where.productId = query.productId;
     if (query.movementType) where.movementType = query.movementType;
 
-    const [total, movements] = await Promise.all([
+    const [total, data] = await Promise.all([
       this.prisma.stockMovement.count({ where }),
       this.prisma.stockMovement.findMany({
         where,
-        take,
+        take: limit,
         skip,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -83,6 +86,8 @@ export class InventoryService {
       }),
     ]);
 
-    return { total, movements, take, skip };
+    const totalPages = Math.ceil(total / limit);
+
+    return { data, total, page, limit, totalPages };
   }
 }

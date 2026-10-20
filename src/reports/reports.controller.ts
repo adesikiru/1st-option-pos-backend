@@ -6,22 +6,25 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { ReportsService } from './reports.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(Role.ADMIN, Role.MANAGER)
 @Controller('reports')
 export class ReportsController {
   constructor(private reportsService: ReportsService) {}
 
+  // Dashboard is visible to all authenticated roles
   @Get('dashboard')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.INVENTORY_OFFICER, Role.CASHIER)
   getDashboard() {
     return this.reportsService.getDashboard();
   }
 
   @Get('sales')
+  @Roles(Role.ADMIN, Role.MANAGER)
   getSalesReport(@Query('dateFrom') dateFrom: string, @Query('dateTo') dateTo: string) {
     return this.reportsService.getSalesReport(dateFrom, dateTo);
   }
 
   @Get('inventory')
+  @Roles(Role.ADMIN, Role.MANAGER, Role.INVENTORY_OFFICER)
   getInventoryReport() {
     return this.reportsService.getInventoryReport();
   }
