@@ -6,27 +6,41 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  const allowedOrigins = process.env.FRONTEND_URL
-    ? process.env.FRONTEND_URL.split(',').map((url) => url.trim().replace(/\/$/, ''))
-    : ['http://localhost:3000', 'https://1st-option-pos-frontend.vercel.app'];
+  const frontendEnv = process.env.FRONTEND_URL || '';
+  const configuredOrigins = frontendEnv
+    .split(',')
+    .map((url) => url.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'https://1st-option-pos-frontend.vercel.app',
+    'https://1st-option-energy-pos.vercel.app',
+    ...configuredOrigins,
+  ];
 
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       // Allow requests with no origin (mobile apps, server-to-server, curl)
       if (!origin) return callback(null, true);
 
       const isAllowed =
         allowedOrigins.includes(origin) ||
         origin.endsWith('.vercel.app') ||
-        origin.includes('localhost');
+        origin.startsWith('http://localhost:');
 
       if (isAllowed) {
         callback(null, true);
       } else {
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
+        callback(null, false);
       }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   app.useGlobalPipes(
