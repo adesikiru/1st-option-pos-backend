@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateProductDto, ProductQueryDto, UpdateProductDto } from './dto/product.dto';
@@ -87,6 +87,23 @@ export class ProductsService {
       include: { category: true },
     });
     if (!product) throw new NotFoundException('Product not found');
+    return product;
+  }
+
+  async findByBarcode(barcode: string) {
+    if (!barcode || !barcode.trim()) {
+      throw new BadRequestException('Barcode must not be empty');
+    }
+    const product = await this.prisma.product.findFirst({
+      where: {
+        barcode: barcode.trim(),
+        isActive: true,
+      },
+      include: { category: true, supplier: { select: { id: true, name: true } } },
+    });
+    if (!product) {
+      throw new NotFoundException(`Product with barcode "${barcode.trim()}" not found or is inactive`);
+    }
     return product;
   }
 

@@ -18,7 +18,7 @@ export class SalesController {
     return this.salesService.create(dto, user.id);
   }
 
-  @Roles(Role.ADMIN, Role.MANAGER)
+  @Roles(Role.ADMIN, Role.MANAGER, Role.CASHIER)
   @Get()
   findAll(@Query() query: SaleQueryDto) {
     return this.salesService.findAll(query);
