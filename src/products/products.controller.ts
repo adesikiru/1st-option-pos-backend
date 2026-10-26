@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Role } from '@prisma/client';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -37,6 +38,11 @@ export class ProductsController {
     return this.productsService.findByBarcode(barcode);
   }
 
+  @Get(':id/statistics')
+  getStatistics(@Param('id') id: string) {
+    return this.productsService.getProductStatistics(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productsService.findOne(id);
@@ -44,8 +50,8 @@ export class ProductsController {
 
   @Roles(Role.ADMIN, Role.MANAGER, Role.INVENTORY_OFFICER)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateProductDto, @CurrentUser() user: any) {
+    return this.productsService.update(id, dto, user?.id);
   }
 
   @Roles(Role.ADMIN, Role.MANAGER)

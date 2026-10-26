@@ -104,6 +104,12 @@ export class UpdateProductDto {
   @IsOptional()
   imageUrl?: string;
 
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  stockQuantity?: number;
+
   @IsOptional()
   isActive?: boolean;
 }

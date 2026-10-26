@@ -1,0 +1,8 @@
+the report page is not displaying anything, also i want to update the navigations too chucky. instead of an header make it a side bar. 
+
+updates:
+inventory summary: department, on-hand qty,ext cost, ext price, on order
+item summary date range columns are: departments, vendor, product name,  qty sold, ext price,ext cost, margin
+inventory items to be editable just as we have it on quickbooks. item or product history should have on hand quantity, change date. statistics for each product, with totals  of net sales, cos of goods, profit and profit margin. quantity in: receied, sales returns, adjustments transfers. quantity out: sold endor returns, adjustments transsfers.
+
+host-network-events-document-start.js:1  POST http://localhost:4000/api/v1/auth/login 500 (Internal Server Error)

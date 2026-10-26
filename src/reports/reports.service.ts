@@ -192,7 +192,7 @@ export class ReportsService {
   async getInventoryReport() {
     const products = await this.prisma.product.findMany({
       where: { isActive: true },
-      include: { category: true },
+      include: { category: true, supplier: true },
       orderBy: { name: 'asc' },
     });
 
@@ -216,6 +216,215 @@ export class ReportsService {
         totalCostValue,
       },
       products,
+    };
+  }
+
+  async getInventorySummary() {
+    const products = await this.prisma.product.findMany({
+      where: { isActive: true },
+      include: {
+        category: true,
+        supplier: true,
+      },
+      orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+    });
+
+    // Department grouping
+    const deptMap = new Map<string, {
+      department: string;
+      onHandQty: number;
+      extCost: number;
+      extPrice: number;
+      onOrder: number;
+      products: Array<{
+        id: string;
+        name: string;
+        sku: string;
+        barcode: string | null;
+        department: string;
+        vendor: string;
+        onHandQty: number;
+        costPrice: number;
+        sellingPrice: number;
+        extCost: number;
+        extPrice: number;
+        onOrder: number;
+        minStockThreshold: number;
+        unitOfMeasurement: string;
+      }>;
+    }>();
+
+    for (const p of products) {
+      const deptName = p.category?.name || 'General';
+      const onHand = Number(p.stockQuantity);
+      const cost = Number(p.costPrice);
+      const price = Number(p.sellingPrice);
+      const extCost = onHand * cost;
+      const extPrice = onHand * price;
+      const onOrder = 0; // Default on order quantity
+
+      if (!deptMap.has(deptName)) {
+        deptMap.set(deptName, {
+          department: deptName,
+          onHandQty: 0,
+          extCost: 0,
+          extPrice: 0,
+          onOrder: 0,
+          products: [],
+        });
+      }
+
+      const d = deptMap.get(deptName)!;
+      d.onHandQty += onHand;
+      d.extCost += extCost;
+      d.extPrice += extPrice;
+      d.onOrder += onOrder;
+      d.products.push({
+        id: p.id,
+        name: p.name,
+        sku: p.sku,
+        barcode: p.barcode,
+        department: deptName,
+        vendor: p.supplier?.name || 'None',
+        onHandQty: onHand,
+        costPrice: cost,
+        sellingPrice: price,
+        extCost,
+        extPrice,
+        onOrder,
+        minStockThreshold: Number(p.minStockThreshold),
+        unitOfMeasurement: p.unitOfMeasurement,
+      });
+    }
+
+    const departments = Array.from(deptMap.values()).map((d) => {
+      const margin = d.extPrice - d.extCost;
+      const marginPercent = d.extPrice > 0 ? Number(((margin / d.extPrice) * 100).toFixed(2)) : 0;
+      return {
+        ...d,
+        margin,
+        marginPercent,
+      };
+    });
+
+    const totalOnHandQty = departments.reduce((acc, d) => acc + d.onHandQty, 0);
+    const totalExtCost = departments.reduce((acc, d) => acc + d.extCost, 0);
+    const totalExtPrice = departments.reduce((acc, d) => acc + d.extPrice, 0);
+    const totalOnOrder = departments.reduce((acc, d) => acc + d.onOrder, 0);
+    const totalMargin = totalExtPrice - totalExtCost;
+    const overallMarginPercent = totalExtPrice > 0 ? Number(((totalMargin / totalExtPrice) * 100).toFixed(2)) : 0;
+
+    return {
+      departments,
+      totals: {
+        totalProducts: products.length,
+        totalOnHandQty,
+        totalExtCost,
+        totalExtPrice,
+        totalOnOrder,
+        totalMargin,
+        overallMarginPercent,
+      },
+    };
+  }
+
+  async getItemSummary(dateFrom?: string, dateTo?: string, categoryId?: string, supplierId?: string) {
+    const today = new Date();
+    const from = dateFrom ? new Date(dateFrom) : new Date(today.getFullYear(), today.getMonth(), 1);
+    const to = dateTo ? new Date(dateTo) : new Date();
+    to.setHours(23, 59, 59, 999);
+
+    const saleItems = await this.prisma.saleItem.findMany({
+      where: {
+        sale: {
+          status: 'COMPLETED',
+          createdAt: { gte: from, lte: to },
+        },
+        product: {
+          ...(categoryId ? { categoryId } : {}),
+          ...(supplierId ? { supplierId } : {}),
+        },
+      },
+      include: {
+        product: {
+          include: {
+            category: true,
+            supplier: true,
+          },
+        },
+      },
+    });
+
+    // Aggregate by productId
+    const map = new Map<string, {
+      productId: string;
+      productName: string;
+      sku: string;
+      department: string;
+      vendor: string;
+      qtySold: number;
+      extPrice: number;
+      extCost: number;
+    }>();
+
+    for (const item of saleItems) {
+      const pid = item.productId;
+      const qty = Number(item.quantity);
+      const extPrice = Number(item.totalPrice);
+      const extCost = Number(item.unitCost) * qty;
+      const dept = item.product?.category?.name || 'General';
+      const vendor = item.product?.supplier?.name || 'None';
+
+      if (!map.has(pid)) {
+        map.set(pid, {
+          productId: pid,
+          productName: item.productName || item.product?.name || 'Unknown',
+          sku: item.sku || item.product?.sku || '',
+          department: dept,
+          vendor: vendor,
+          qtySold: 0,
+          extPrice: 0,
+          extCost: 0,
+        });
+      }
+
+      const row = map.get(pid)!;
+      row.qtySold += qty;
+      row.extPrice += extPrice;
+      row.extCost += extCost;
+    }
+
+    const items = Array.from(map.values()).map((row) => {
+      const margin = row.extPrice - row.extCost;
+      const marginPercent = row.extPrice > 0 ? (margin / row.extPrice) * 100 : 0;
+      return {
+        ...row,
+        margin,
+        marginPercent: Number(marginPercent.toFixed(2)),
+      };
+    });
+
+    // Sort by extPrice desc
+    items.sort((a, b) => b.extPrice - a.extPrice);
+
+    // Compute totals
+    const totalQtySold = items.reduce((acc, i) => acc + i.qtySold, 0);
+    const totalExtPrice = items.reduce((acc, i) => acc + i.extPrice, 0);
+    const totalExtCost = items.reduce((acc, i) => acc + i.extCost, 0);
+    const totalMargin = totalExtPrice - totalExtCost;
+    const overallMarginPercent = totalExtPrice > 0 ? Number(((totalMargin / totalExtPrice) * 100).toFixed(2)) : 0;
+
+    return {
+      dateFrom: from.toISOString().split('T')[0],
+      dateTo: to.toISOString().split('T')[0],
+      items,
+      totals: {
+        totalQtySold,
+        totalExtPrice,
+        totalExtCost,
+        totalMargin,
+        overallMarginPercent,
+      },
     };
   }
 }
