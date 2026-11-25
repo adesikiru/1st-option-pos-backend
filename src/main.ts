@@ -31,6 +31,7 @@ async function bootstrap() {
       const isAllowed =
         allowedOrigins.includes(origin) ||
         origin.endsWith('.vercel.app') ||
+        origin.includes('1stoption.app') ||
         origin.startsWith('http://localhost:');
 
       if (isAllowed) {
