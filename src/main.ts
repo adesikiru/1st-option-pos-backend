@@ -16,6 +16,7 @@ async function bootstrap() {
     'http://localhost:3000',
     'https://1st-option-pos-frontend.vercel.app',
     'https://1st-option-energy-pos.vercel.app',
+    'https://1stoption.app',
     ...configuredOrigins,
   ];
 
